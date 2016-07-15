@@ -59,54 +59,71 @@ class ViewController: UIViewController {
 //        run the request to get the data from the URL
         let task = NSURLSession.sharedSession().dataTaskWithRequest(request) { (data, response, error) in
             
-//            if here is no data then continue
-            if error == nil {
-//                if ther is a data item
-                if let data = data {
-//                    make a variable placeholder
-                    let parsedData: AnyObject!
-                    
-//                    parse the json to readable format
-                    do {
-//                        serialization = convert to bytes and de serialization means the opposite all grouped under NSSerialization
-                        parsedData = try NSJSONSerialization.JSONObjectWithData(data, options: .AllowFragments)
-                    } catch {
-//                    throw error if necessary
-                        let alert = UIAlertController(title: "Alert", message: "Could not parse the data as JSON: '\(data)'", preferredStyle: UIAlertControllerStyle.Alert)
-                        alert.addAction(UIAlertAction(title: "Working!!", style: UIAlertActionStyle.Default, handler: nil))
-                        self.presentViewController(alert, animated: true, completion: nil)
-                        return
-                    }
-                    
-//                  if there is a photos key in the response dictionary
-                    if let photosDictionary = parsedData[Constants.FlickrResponseKeys.Photos] as? [String: AnyObject],
-//                        if there is key on the photos dictionary that is "photo" (which is an array of dictionaries)
-                        let photoArray = photosDictionary["photo"] as? [[String: AnyObject]] {
-                        
-//                        make a random index and generate the dictionary at this index
-                        let randomPhotoImdex = Int(arc4random_uniform(UInt32(photoArray.count)))
-                        let photoDictionary = photoArray[randomPhotoImdex] as? [String: AnyObject]
-                        
-//                        
-                        if let urlStr = photoDictionary![Constants.FlickrResponseKeys.MediumURL] as? String,
-//                            get the url and title from the dictionary chosen at random
-                            let photoTitle = photoDictionary![Constants.FlickrResponseKeys.Title] as? String {
-                            let imageURL = NSURL(string: urlStr)
-//                            if the url returned data then we turn it into NSData format and then send it to the main queue to update the views contents
-                            if let imageData = NSData(contentsOfURL: imageURL!) {
-                                performUIUpdatesOnMain() {
-                                    self.photoImageView.image = UIImage(data: imageData)
-                                    self.photoTitleLabel.text = photoTitle
-                                    self.setUIEnabled(true)
-                                }
-                            }
-                        }
-                    }
-                    
+            func displayError (error: String) {
+                print(error)
+                print("URL at time of error: \(url)")
+                performUIUpdatesOnMain{
+                    self.setUIEnabled(true)
                 }
             }
+            
+//            was there an error?
+            guard (error == nil) else {
+                displayError("There was an error with your request: \(error)")
+                return
+            }
+            
+//            was any data returned?
+            guard let data = data else {
+                displayError("No data was returned by the request!")
+                return
+            }
+            
+//          make a variable placeholder
+            let parsedData: AnyObject!
+                    
+//          parse the json to readable format
+            do {
+//              serialization = convert to bytes and de serialization means the opposite all grouped under NSSerialization
+                parsedData = try NSJSONSerialization.JSONObjectWithData(data, options: .AllowFragments)
+            } catch {
+//              throw error if necessary
+                displayError("Could not parse the data as JSON: \(data)")
+                return
+            }
+            
+//            are there photos and photo keys in our result?
+            guard let photosDictionary = parsedData[Constants.FlickrResponseKeys.Photos] as? [String: AnyObject],
+                let photoArray = photosDictionary["photo"] as? [[String: AnyObject]] else {
+                    displayError("Cannot find keys '\(Constants.FlickrResponseKeys.Photos)' and '\(Constants.FlickrResponseKeys.Photo)' in '\(parsedData)'")
+                    return
+            }
+                        
+//          select random photo
+            let randomPhotoImdex = Int(arc4random_uniform(UInt32(photoArray.count)))
+            let photoDictionary = photoArray[randomPhotoImdex] as [String: AnyObject]
+            let photoTitle = photoDictionary[Constants.FlickrResponseKeys.Title] as? String
+            
+//           does our photo have a key for 'url_m'?
+            guard let imageURLString = photoDictionary[Constants.FlickrResponseKeys.MediumURL] as? String else {
+                displayError("Cannot find key '\(Constants.FlickrResponseKeys.MediumURL)' in '\(photoDictionary)'")
+                return
+            }
+            
+//            if an image exists at the URL then set the image and title
+            let imageURL = NSURL(string: imageURLString)
+//          if the url returned data then we turn it into NSData format and then send it to the main queue to update the views contents
+            if let imageData = NSData(contentsOfURL: imageURL!) {
+                performUIUpdatesOnMain() {
+                    self.photoImageView.image = UIImage(data: imageData)
+                    self.photoTitleLabel.text = photoTitle
+                    self.setUIEnabled(true)
+                }
+            } else {
+                displayError("Image does not exist at '\(imageURL)'")
+            }
+       
         }
-        
         task.resume()
     }
     
